@@ -29,6 +29,7 @@ export const getUserInfo = async ({ userId }: getUserInfoProps) => {
     return parseStringify(user.documents[0]);
   } catch (error) {
     console.log(error)
+    return null;
   }
 }
 
@@ -46,9 +47,11 @@ export const signIn = async ({ email, password }: signInProps) => {
 
     const user = await getUserInfo({ userId: session.userId }) 
 
-    return parseStringify(user);
+    // Return user info if available, otherwise return a minimal success object
+    return parseStringify(user) || { success: true };
   } catch (error) {
     console.error('Error', error);
+    return null;
   }
 }
 
@@ -60,23 +63,40 @@ export const signUp = async ({ password, ...userData }: SignUpParams) => {
   try {
     const { account, database } = await createAdminClient();
 
-    newUserAccount = await account.create(
-      ID.unique(), 
-      email, 
-      password, 
-      `${firstName} ${lastName}`
-    );
+    // Try to create account
+    try {
+      newUserAccount = await account.create(
+        ID.unique(), 
+        email, 
+        password, 
+        `${firstName} ${lastName}`
+      );
+    } catch (accountError: any) {
+      console.error('Account creation failed:', accountError);
+      // If account already exists, throw error to user
+      if (accountError?.type === 'user_already_exists') {
+        throw new Error('An account with this email already exists. Please sign in instead.');
+      }
+      throw accountError;
+    }
 
     if(!newUserAccount) throw new Error('Error creating user')
 
-    const dwollaCustomerUrl = await createDwollaCustomer({
-      ...userData,
-      type: 'personal'
-    })
+    let dwollaCustomerUrl = '';
+    let dwollaCustomerId = '';
 
-    if(!dwollaCustomerUrl) throw new Error('Error creating Dwolla customer')
+    try {
+      dwollaCustomerUrl = await createDwollaCustomer({
+        ...userData,
+        type: 'personal'
+      }) || '';
 
-    const dwollaCustomerId = extractCustomerIdFromUrl(dwollaCustomerUrl);
+      if(dwollaCustomerUrl) {
+        dwollaCustomerId = extractCustomerIdFromUrl(dwollaCustomerUrl);
+      }
+    } catch (dwollaError) {
+      console.error('Dwolla customer creation failed, continuing without Dwolla:', dwollaError);
+    }
 
     const newUser = await database.createDocument(
       DATABASE_ID!,
@@ -101,7 +121,8 @@ export const signUp = async ({ password, ...userData }: SignUpParams) => {
 
     return parseStringify(newUser);
   } catch (error) {
-    console.error('Error', error);
+    console.error('Error signing up:', error);
+    return null;
   }
 }
 
@@ -112,7 +133,8 @@ export async function getLoggedInUser() {
 
     const user = await getUserInfo({ userId: result.$id})
 
-    return parseStringify(user);
+    // If user info is available, return it; otherwise return the account info
+    return parseStringify(user) || parseStringify(result);
   } catch (error) {
     console.log(error)
     return null;
@@ -256,7 +278,8 @@ export const getBanks = async ({ userId }: getBanksProps) => {
 
     return parseStringify(banks.documents);
   } catch (error) {
-    console.log(error)
+    console.log('Error getting banks:', error)
+    return [];
   }
 }
 

@@ -21,8 +21,12 @@ export const getAccounts = async ({ userId }: getAccountsProps) => {
     // get banks from db
     const banks = await getBanks({ userId });
 
+    if (!banks || banks.length === 0) {
+      return parseStringify({ data: [], totalBanks: 0, totalCurrentBalance: 0 });
+    }
+
     const accounts = await Promise.all(
-      banks?.map(async (bank: Bank) => {
+      banks.map(async (bank: Bank) => {
         // get each account info from plaid
         const accountsResponse = await plaidClient.accountsGet({
           access_token: bank.accessToken,
@@ -66,6 +70,8 @@ export const getAccounts = async ({ userId }: getAccountsProps) => {
 // Get one bank account
 export const getAccount = async ({ appwriteItemId }: getAccountProps) => {
   try {
+    if (!appwriteItemId) return null;
+    
     // get bank from db
     const bank = await getBank({ documentId: appwriteItemId });
 
